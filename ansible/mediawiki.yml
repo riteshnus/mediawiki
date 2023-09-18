@@ -1,0 +1,113 @@
+---
+- name: Configure MediaWiki on Azure VM
+  hosts: localhost
+  connection: local
+  gather_facts: false
+
+  tasks:
+    - name: Terraform Output
+      shell: terraform output -json
+      register: terraform_output
+
+    - name: Set Terraform Outputs as Facts
+      set_fact:
+        vm_public_ip: "{{ terraform_output.stdout['vm_public_ip']['value'] }}"
+        mysql_server_fqdn: "{{ terraform_output.stdout['mssql_server_fqdn']['value'] }}"
+        mysql_db_user: "{{ terraform_output.stdout['mssql_db_user']['value'] }}"
+        mysql_db_password: "{{ terraform_output.stdout['mssql_db_password']['value'] }}"
+        mysql_db_name: "{{ terraform_output.stdout['mssql_db_name']['value'] }}"
+        mediawiki_version: 1.40.0
+      
+- name: Configure MediaWiki on Azure VM
+  hosts: "{{ vm_public_ip }}"
+  vars_files:
+    - vars.yml 
+  become: yes
+  gather_facts: yes
+
+  tasks:
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+
+    - name: Install required packages
+      yum:
+        name: "{{ item }}"
+        state: present
+      loop:
+        - httpd
+        - php
+        - php-mysql
+        - php-gd
+        - php-xml
+        - mariadb-server
+        - ImageMagick
+        - zip
+        - unzip
+
+    - name: Secure MariaDB installation
+      command: mysql_secure_installation
+      args:
+        creates: /root/.mysql_secret
+      when: "'root' in lookup('file', '/root/.mysql_secret')"
+
+    - name: Create MediaWiki database
+      mysql_db:
+        name: mediawiki
+        collation: utf8_general_ci
+        state: present
+      become_user: root
+
+    - name: Create MediaWiki database user
+      mysql_user:
+        name: mediawikiuser
+        password: "{{ mysql_db_password }}"
+        priv: "mediawiki.*:ALL"
+        state: present
+      become_user: root
+
+    - name: Download and extract MediaWiki
+      get_url:
+        url: "https://releases.wikimedia.org/mediawiki/{{ mediawiki_version }}/mediawiki-{{ mediawiki_version }}.tar.gz"
+        dest: "/tmp/mediawiki-{{ mediawiki_version }}.tar.gz"
+        mode: '0755'
+      register: download_result
+
+    - name: Ensure MediaWiki directory exists
+      file:
+        path: "{{ mediawiki_install_dir }}"
+        state: directory
+        recurse: yes
+        mode: '0755'
+      become_user: www-data
+
+    - name: Extract MediaWiki archive
+      ansible.builtin.unarchive:
+        src: "/tmp/mediawiki-{{ mediawiki_version }}.tar.gz"
+        dest: "{{ mediawiki_install_dir }}"
+        remote_src: yes
+      when: download_result.changed
+      become_user: www-data
+
+    - name: Create MediaWiki database
+      command: "mysql -h {{ mysql_server_fqdn }} -u {{ mysql_db_user }} -p{{ mysql_db_password }} -e 'CREATE DATABASE {{ mysql_db_name }};'"
+
+    - name: Configure Apache for MediaWiki
+      template:
+        src: templates/apache_mediawiki.conf.j2
+        dest: "/etc/apache2/sites-available/mediawiki.conf"
+      notify:
+        - Restart Apache
+        
+    - name: Enable and start Apache service
+      systemd:
+        name: apache2
+        state: started
+        enabled: yes
+      become: yes
+
+  handlers:
+    - name: Restart Apache
+      systemd:
+        name: apache2
+        state: restarted
