@@ -1,6 +1,7 @@
 # MediaWiki Deployment with Terraform and Ansible
 
-Automate the deployment of [MediaWiki](https://www.mediawiki.org/) using Terraform in Microsoft Azure and Ansible. This repository provides a set of Terraform scripts and Ansible playbooks to set up and configure MediaWiki on a virtual machine in the Azure cloud.
+Automate the deployment of [MediaWiki](https://www.mediawiki.org/) using Terraform in Microsoft Azure and Ansible. This repository provides a set of Terraform scripts and Ansible playbooks to set up and configure MediaWiki on a virtual machine in the Azure cloud. With terraform used local state managment for this assignment, but can work with remote state management. 
+Used 2 layer architecture, First as App tier for application deployment on VM and Second data dabase tier to deploy the MSSQL in azure cloud.  
 
 ## Table of Contents
 

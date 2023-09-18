@@ -6,10 +6,5 @@ terraform {
       version = "~> 3.30.0"
     }
   }
-  backend "azurerm" {
-    resource_group_name  = "test-ritesh"
-    storage_account_name = "testritesh009"
-    container_name       = "testlog"
-    key                  = "terraform.tfstate"
-  }
+  backend "local" {}
 }
